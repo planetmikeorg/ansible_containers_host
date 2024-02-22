@@ -1,0 +1,10 @@
+---
+user_name: taskrunner
+user_password: "{{ vault_user_password }}"
+update_os: false
+directories_config: /u01
+directories:
+  - path: "{{ directories_config }}/traefik/config"
+
+directory_permissions:
+  - { path: "{{ directories_config }}/traefik", owner: "nobody:nobody" }

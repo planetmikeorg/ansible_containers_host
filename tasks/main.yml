@@ -1,0 +1,162 @@
+---
+- name: Admin | Add task runners group
+  group:
+    name: "taskrunners"
+    state: present
+  tags:
+    - baseline
+    - admin
+
+- name: Admin | Add task runner user
+  user:
+    name: taskrunner
+    state: present
+    comment: "Task Runner"
+    shell: "/bin/bash"
+    groups: "taskrunners"
+  tags:
+    - baseline
+    - admin
+
+- name: Admin | Task Runners sudo
+  lineinfile:
+    dest: /etc/sudoers.d/taskrunners
+    state: present
+    create: yes
+    regexp: '^%taskrunners'
+    line: '%taskrunners ALL=(ALL) NOPASSWD: ALL'
+    validate: 'visudo -cf %s'
+  tags:
+    - baseline
+    - admin
+
+- name: "Admin | Set up keys for Task Runner"
+  authorized_key:
+    user: taskrunner
+    key: "{{ taskrunner_key }}"
+  when: taskrunner_key is defined  
+  tags:
+    - baseline
+    - admin
+
+
+- name: Install | Run package updates
+  package:
+    name: '*'
+    state: latest
+  register: updated
+  when: update_os
+  tags:
+    - baseline
+    - install
+
+- name: Reboot if updated
+  shell: "sleep 5 && reboot"
+  async: 1
+  poll: 0
+  when: updated.changed 
+  tags:
+    - baseline
+    - install
+
+- name: Wait for the reboot to complete 
+  wait_for_connection:
+    connect_timeout: 30
+    sleep: 30
+    delay: 5
+    timeout: 600
+  when: updated.changed
+  tags:
+    - baseline
+    - install
+
+
+- name: Ensure host requirements are installed
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - "@Container Management"
+    - "@Headless Management"  
+    - cockpit
+    - cockpit-podman
+    - cockpit-machines
+    - cockpit-storaged
+    - cockpit-ws
+    - cockpit-pcp
+    - cockpit-system
+    - python3-pip
+    - python3-pip-wheel
+
+- name: Cockpit Socket Directory
+  file:
+    path: "/etc/systemd/system/cockpit.socket.d"
+    state: directory
+
+- name: Cockpit Configuration
+  template:
+    src: "systemd/cockpit.socket.d/listen.conf"
+    dest: "/etc/systemd/system/cockpit.socket.d/listen.conf"
+  register: cockpit
+
+- name: Reload Daemons
+  systemd:
+    daemon_reload: true  
+  when: cockpit.changed
+
+- name: Restart Cockpit
+  service:
+    name: cockpit.socket
+    state: restarted
+  when: cockpit.changed    
+
+- name: Ensure cockpit service is running and enabled
+  systemd:
+    name: cockpit.socket
+    state: started
+    enabled: yes
+
+- name: Configure firewall for Cockpit
+  firewalld:
+    service: cockpit
+    permanent: yes
+    state: enabled
+    immediate: yes
+
+- name: Create podman user
+  user:
+    name: "{{ user_name }}"
+    password: "{{ user_password | password_hash('sha512') }}"
+    state: present
+
+- name: Set ACLs for /u01 with full control for user
+  acl:
+    path: "/u01"
+    entity: "{{ user_name }}"
+    etype: user
+    permissions: rwx
+    state: present
+    default: yes
+
+- name: Ensure SELinux policy for /u01 to be used as container volumes
+  sefcontext:
+    target: '/u01(/.*)?'
+    setype: container_file_t
+    state: present
+  notify: relabel /u01
+
+- name: Create required directories
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: '0774'
+  loop: "{{ directories }}"
+
+- name: Set directory permissions
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner.split(':')[0] }}"
+    group: "{{ item.owner.split(':')[1] }}"
+    recurse: yes
+  loop: "{{ directory_permissions }}"

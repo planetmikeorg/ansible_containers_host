@@ -1,0 +1,6 @@
+---
+- name: relabel /u01
+  command: restorecon -Rv /u01
+
+- name: relabel /u02
+  command: restorecon -Rv /u02

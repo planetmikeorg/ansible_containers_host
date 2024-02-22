@@ -1,0 +1,17 @@
+galaxy_info:
+  author: Michael Cleary
+  role_name: containers_host
+  description: Deploy agent containers
+  company: planetmike.org
+  license: BSD-3-Clause
+  min_ansible_version: "2.9"
+  platforms:
+  - name: EL
+    versions:
+      - "8"
+      - "9"
+
+  galaxy_tags: []
+
+dependencies: []
+  
