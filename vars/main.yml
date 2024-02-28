@@ -1,2 +1,6 @@
 ---
-# vars file for kliksolutions.collector
+traefik:
+  image: docker.io/library/traefik
+  config: "{{ directories_config }}/traefik/etc"
+  certs: "{{ directories_config }}/traefik/certs"
+  logs: "{{ directories_data }}/traefik/logs"

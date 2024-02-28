@@ -63,7 +63,7 @@
   wait_for_connection:
     connect_timeout: 30
     sleep: 30
-    delay: 5
+    delay: 60
     timeout: 600
   when: updated.changed
   tags:
@@ -128,22 +128,40 @@
     name: "{{ user_name }}"
     password: "{{ user_password | password_hash('sha512') }}"
     state: present
+    update_password: on_create
 
-- name: Set ACLs for /u01 with full control for user
+- name: Configure XDG_RUNTIME_DIR for rootless containers
+  lineinfile:
+    path: "/etc/environment"
+    line: "XDG_RUNTIME_DIR=/run/user/{{ podman_user_id }}"
+    create: yes
+
+
+- name: Set ACLs for with full control for user
   acl:
-    path: "/u01"
+    path: "{{ item }}"
     entity: "{{ user_name }}"
     etype: user
     permissions: rwx
     state: present
     default: yes
+  with_items: 
+    - "/u01"
+    - "/u02"
 
-- name: Ensure SELinux policy for /u01 to be used as container volumes
+- name: Ensure SELinux policy for container configuration
   sefcontext:
     target: '/u01(/.*)?'
     setype: container_file_t
     state: present
   notify: relabel /u01
+
+- name: Ensure SELinux policy to be used for container storage
+  sefcontext:
+    target: '/u02(/.*)?'
+    setype: container_file_t
+    state: present
+  notify: relabel /u02
 
 - name: Create required directories
   file:
@@ -160,3 +178,29 @@
     group: "{{ item.owner.split(':')[1] }}"
     recurse: yes
   loop: "{{ directory_permissions }}"
+
+# - name: Traefik image
+#   become: true
+#   become_user: root
+#   containers.podman.podman_image:
+#     name: "{{ traefik.image }}"
+
+#     # Deploy Traefik container as an SSL termination proxy
+# - name: Container | Traefik
+#   containers.podman.podman_container:
+#     name: traefik
+#     image: "{{ traefik.image }}"
+#     log_driver: journald
+#     ports:
+#       - "80:80"
+#       - "443:443"
+#     volumes:
+#       - "{{ traefik.config }}:/etc/traefik"
+#       - "{{ traefik.certs }}:/etc/traefik/certs:ro"
+#       - "{{ traefik.logs }}:/logs:rw"
+#     command:
+#       - "--configFile=/etc/traefik/traefik.yml"
+#     state: started
+#     recreate: true
+#     detach: true
+#     # rm: true
